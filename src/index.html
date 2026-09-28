@@ -55,6 +55,9 @@
                 <button id="student-settings-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-md transition duration-300 mb-2 sm:mb-0">
                     學生名單設定
                 </button>
+                <button id="lock-btn" class="bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2 px-4 rounded-md transition duration-300 mb-2 sm:mb-0">
+                    鎖定畫面
+                </button>
 
                 <div class="flex items-center gap-2 mb-2 sm:mb-0">
                     <span id="auth-user" class="text-xs text-gray-400 max-w-32 truncate">尚未登入</span>
@@ -230,6 +233,8 @@
             let selectedStudentId = '';
             let currentStudentRows = [];
             let currentOverallRows = [];
+            let isScreenLocked = false;
+            let lockedElements = new Map();
             const defaultStudentIds = ['2', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '21', '22', '23', '24', '25', '26', '28', '29', '30', '31', '32'];
             let studentIds = [...defaultStudentIds];
             let draggedId = null;
@@ -242,10 +247,47 @@
             const studentListInput = document.getElementById('student-list-input');
             const siteTitleInput = document.getElementById('site-title-input');
             const saveStudentSettingsBtn = document.getElementById('save-student-settings-btn');
+            const lockBtn = document.getElementById('lock-btn');
 
             const applySiteTitle = () => {
                 document.getElementById('site-title').textContent = siteTitle;
                 document.title = siteTitle;
+            };
+
+            const applyLockState = () => {
+                document.querySelectorAll('button, input, select, textarea').forEach(element => {
+                    if (element.id === 'lock-btn') return;
+                    if (isScreenLocked) {
+                        lockedElements.set(element, element.disabled);
+                        element.disabled = true;
+                    } else {
+                        element.disabled = lockedElements.get(element) ?? false;
+                    }
+                });
+                if (!isScreenLocked) lockedElements.clear();
+                lockBtn.textContent = isScreenLocked ? '解鎖畫面' : '鎖定畫面';
+                lockBtn.classList.toggle('bg-red-600', isScreenLocked);
+                lockBtn.classList.toggle('hover:bg-red-700', isScreenLocked);
+                lockBtn.classList.toggle('bg-orange-600', !isScreenLocked);
+                lockBtn.classList.toggle('hover:bg-orange-700', !isScreenLocked);
+            };
+
+            lockBtn.onclick = () => {
+                if (isScreenLocked) {
+                    const password = prompt('請輸入解鎖密碼');
+                    if (password !== '0422') {
+                        alert('密碼錯誤。');
+                        return;
+                    }
+                    isScreenLocked = false;
+                    applyLockState();
+                    return;
+                }
+
+                ['homework-modal', 'student-report-modal', 'overall-report-modal', 'delete-confirm-modal', 'student-settings-modal']
+                    .forEach(id => document.getElementById(id).classList.add('hidden'));
+                isScreenLocked = true;
+                applyLockState();
             };
 
             const updateAuthUI = () => {
@@ -431,7 +473,14 @@
                         <button onclick="manualClose('${hw.id}')" class="mt-auto text-xs bg-gray-700 hover:bg-amber-700 py-1 rounded transition">手動截止剩餘</button>
                     `;
                     list.appendChild(card);
-                    card.addEventListener('dragstart', e => { draggedId = hw.id; card.classList.add('dragging'); });
+                    card.addEventListener('dragstart', e => {
+                        if (isScreenLocked) {
+                            e.preventDefault();
+                            return;
+                        }
+                        draggedId = hw.id;
+                        card.classList.add('dragging');
+                    });
                     card.addEventListener('dragend', () => { draggedId = null; card.classList.remove('dragging'); });
                 });
                 bindDragEvents();
@@ -691,6 +740,7 @@
             const bindDragEvents = () => {
                 const list = document.getElementById('homework-list');
                 list.ondragover = e => {
+                    if (isScreenLocked) return;
                     e.preventDefault();
                     const target = e.target.closest('.draggable-card');
                     if (!target || target.dataset.id === draggedId) return;
@@ -700,6 +750,7 @@
                     else target.classList.add('drag-over-bottom');
                 };
                 list.ondrop = async e => {
+                    if (isScreenLocked) return;
                     if (!ensureSignedIn()) return;
                     const target = e.target.closest('.draggable-card');
                     if (!target || target.dataset.id === draggedId) return;
