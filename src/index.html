@@ -148,7 +148,30 @@
         </div>
     </div>
 
-    <script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import {
+            getFirestore,
+            collection,
+            doc,
+            getDocs,
+            setDoc,
+            writeBatch
+        } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCaysz07Kv8SUqnv-uCzOiSJCVluDUhL10",
+            authDomain: "homeworkv2-653d3.firebaseapp.com",
+            projectId: "homeworkv2-653d3",
+            storageBucket: "homeworkv2-653d3.firebasestorage.app",
+            messagingSenderId: "1070751247192",
+            appId: "1:1070751247192:web:6aff414cd7f61b7bfa132d",
+            measurementId: "G-QGVSX805ZW"
+        };
+
+        const firebaseApp = initializeApp(firebaseConfig);
+        const db = getFirestore(firebaseApp);
+
         document.addEventListener('DOMContentLoaded', () => {
             // --- 核心配置：更換金鑰名稱以實現全新資料夾效果 ---
             const DATA_KEY = 'homeworks_v2_data';
@@ -156,14 +179,33 @@
             
             let homeworks = [];
             let stateHistory = [];
+            let remoteHomeworkIds = new Set();
             const studentIds = ['2', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '21', '22', '23', '24', '25', '26', '28', '29', '30', '31', '32'];
             let draggedId = null;
             let homeworkToDelete = null;
 
             // --- 資料儲存與恢復功能 ---
-            const saveState = () => {
+            const saveState = async () => {
                 localStorage.setItem(DATA_KEY, JSON.stringify(homeworks));
                 localStorage.setItem(HISTORY_KEY, JSON.stringify(stateHistory));
+
+                const batch = writeBatch(db);
+                const currentIds = new Set(homeworks.map(hw => hw.id));
+
+                remoteHomeworkIds.forEach(id => {
+                    if (!currentIds.has(id)) batch.delete(doc(db, 'homeworks', id));
+                });
+
+                homeworks.forEach(hw => {
+                    batch.set(doc(db, 'homeworks', hw.id), hw);
+                });
+
+                try {
+                    await batch.commit();
+                    remoteHomeworkIds = currentIds;
+                } catch (error) {
+                    console.error('Firestore 儲存失敗:', error);
+                }
             };
 
             const pushHistory = (save = true) => {
@@ -351,9 +393,17 @@
             };
 
             // --- 初始化 ---
-            const init = () => {
-                const saved = localStorage.getItem(DATA_KEY);
-                homeworks = saved ? JSON.parse(saved) : [];
+            const init = async () => {
+                try {
+                    const snapshot = await getDocs(collection(db, 'homeworks'));
+                    homeworks = snapshot.docs.map(item => ({ id: item.id, ...item.data() }));
+                    remoteHomeworkIds = new Set(homeworks.map(hw => hw.id));
+                } catch (error) {
+                    console.error('Firestore 讀取失敗，改用本機備份:', error);
+                    const saved = localStorage.getItem(DATA_KEY);
+                    homeworks = saved ? JSON.parse(saved) : [];
+                }
+
                 const hist = localStorage.getItem(HISTORY_KEY);
                 stateHistory = hist ? JSON.parse(hist) : [];
                 if (stateHistory.length === 0) pushHistory(false);
