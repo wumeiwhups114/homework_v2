@@ -185,6 +185,20 @@
         </div>
     </div>
 
+    <div id="unlock-modal" class="fixed inset-0 z-[60] flex items-center justify-center p-4 modal-backdrop hidden">
+        <div class="bg-gray-800 rounded-lg shadow-xl w-full max-w-sm p-6">
+            <h2 class="text-2xl font-bold mb-4 text-cyan-400">解鎖畫面</h2>
+            <form id="unlock-form">
+                <label for="unlock-password-input" class="block text-sm text-gray-300 mb-2">請輸入解鎖密碼</label>
+                <input id="unlock-password-input" type="password" inputmode="numeric" autocomplete="off" class="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:ring-2 focus:ring-cyan-500 outline-none" required>
+                <div class="flex justify-end space-x-3 mt-4">
+                    <button type="button" id="unlock-cancel-btn" class="bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded-md transition">取消</button>
+                    <button type="submit" class="bg-cyan-500 hover:bg-cyan-600 text-white py-2 px-4 rounded-md transition">解鎖</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import {
@@ -256,7 +270,7 @@
 
             const applyLockState = () => {
                 document.querySelectorAll('button, input, select, textarea').forEach(element => {
-                    if (element.id === 'lock-btn') return;
+                    if (element.id === 'lock-btn' || element.closest('#unlock-modal')) return;
                     if (isScreenLocked) {
                         lockedElements.set(element, element.disabled);
                         element.disabled = true;
@@ -274,19 +288,34 @@
 
             lockBtn.onclick = () => {
                 if (isScreenLocked) {
-                    const password = prompt('請輸入解鎖密碼');
-                    if (password !== '0422') {
-                        alert('密碼錯誤。');
-                        return;
-                    }
-                    isScreenLocked = false;
-                    applyLockState();
+                    const unlockModal = document.getElementById('unlock-modal');
+                    const passwordInput = document.getElementById('unlock-password-input');
+                    passwordInput.value = '';
+                    unlockModal.classList.remove('hidden');
+                    passwordInput.focus();
                     return;
                 }
 
                 ['homework-modal', 'student-report-modal', 'overall-report-modal', 'delete-confirm-modal', 'student-settings-modal']
                     .forEach(id => document.getElementById(id).classList.add('hidden'));
                 isScreenLocked = true;
+                applyLockState();
+            };
+
+            document.getElementById('unlock-cancel-btn').onclick = () => {
+                document.getElementById('unlock-modal').classList.add('hidden');
+            };
+
+            document.getElementById('unlock-form').onsubmit = event => {
+                event.preventDefault();
+                const passwordInput = document.getElementById('unlock-password-input');
+                if (passwordInput.value !== '0422') {
+                    alert('密碼錯誤。');
+                    passwordInput.select();
+                    return;
+                }
+                document.getElementById('unlock-modal').classList.add('hidden');
+                isScreenLocked = false;
                 applyLockState();
             };
 
