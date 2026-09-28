@@ -205,21 +205,21 @@
                     remoteHomeworkIds = currentIds;
                 } catch (error) {
                     console.error('Firestore 儲存失敗:', error);
+                    alert('資料尚未成功儲存到 Firebase，請開啟瀏覽器 Console 查看錯誤。');
                 }
             };
 
             const pushHistory = (save = true) => {
                 stateHistory.push(JSON.parse(JSON.stringify(homeworks)));
                 if (stateHistory.length > 10) stateHistory.shift();
-                if (save) saveState();
                 updateUndoBtn();
             };
 
-            const undoAction = () => {
+            const undoAction = async () => {
                 if (stateHistory.length <= 1) return;
                 stateHistory.pop();
                 homeworks = JSON.parse(JSON.stringify(stateHistory[stateHistory.length - 1]));
-                saveState();
+                await saveState();
                 render();
             };
 
@@ -277,7 +277,7 @@
             };
 
             // --- 功能函式 (掛載到 window) ---
-            window.toggleStudent = (hwId, sid) => {
+            window.toggleStudent = async (hwId, sid) => {
                 pushHistory();
                 const hw = homeworks.find(h => h.id === hwId);
                 const cur = hw.submissions[sid];
@@ -285,15 +285,15 @@
                 else if (cur === 'submitted') hw.submissions[sid] = 'pending';
                 else if (cur === 'overdue') hw.submissions[sid] = 'late_submitted';
                 else hw.submissions[sid] = 'overdue';
-                saveState();
+                await saveState();
                 render();
             };
 
-            window.manualClose = (hwId) => {
+            window.manualClose = async (hwId) => {
                 pushHistory();
                 const hw = homeworks.find(h => h.id === hwId);
                 studentIds.forEach(sid => { if(hw.submissions[sid] === 'pending') hw.submissions[sid] = 'overdue'; });
-                saveState();
+                await saveState();
                 render();
             };
 
@@ -313,7 +313,7 @@
             window.openModal = (id) => document.getElementById(id).classList.remove('hidden');
 
             // --- 事件監聽 ---
-            document.getElementById('homework-form').onsubmit = (e) => {
+            document.getElementById('homework-form').onsubmit = async (e) => {
                 e.preventDefault();
                 pushHistory();
                 const id = document.getElementById('homework-id').value;
@@ -333,15 +333,15 @@
                     // 自動置頂：使用 unshift 插入到索引 0
                     homeworks.unshift({ id: Date.now().toString(), ...data, submissions: subs });
                 }
-                saveState();
+                await saveState();
                 render();
                 closeModal('homework-modal');
             };
 
-            document.getElementById('confirm-delete-btn').onclick = () => {
+            document.getElementById('confirm-delete-btn').onclick = async () => {
                 pushHistory();
                 homeworks = homeworks.filter(h => h.id !== homeworkToDelete);
-                saveState();
+                await saveState();
                 render();
                 closeModal('delete-confirm-modal');
             };
@@ -359,10 +359,10 @@
                 openModal('homework-modal');
             };
 
-            document.getElementById('sort-by-due-date-btn').onclick = () => {
+            document.getElementById('sort-by-due-date-btn').onclick = async () => {
                 pushHistory();
                 homeworks.sort((a,b) => b.dueDate.localeCompare(a.dueDate));
-                saveState();
+                await saveState();
                 render();
             };
 
@@ -378,7 +378,7 @@
                     if (e.clientY - rect.top < rect.height / 2) target.classList.add('drag-over-top');
                     else target.classList.add('drag-over-bottom');
                 };
-                list.ondrop = e => {
+                list.ondrop = async e => {
                     const target = e.target.closest('.draggable-card');
                     if (!target || target.dataset.id === draggedId) return;
                     pushHistory();
@@ -387,7 +387,7 @@
                     let toIdx = homeworks.findIndex(h => h.id === target.dataset.id);
                     if (target.classList.contains('drag-over-bottom')) toIdx++;
                     homeworks.splice(toIdx, 0, item);
-                    saveState();
+                    await saveState();
                     render();
                 };
             };
