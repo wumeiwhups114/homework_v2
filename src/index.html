@@ -52,6 +52,16 @@
                 <button id="show-overall-report-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-md transition duration-300 mb-2 sm:mb-0">
                     總覽與匯出
                 </button>
+
+                <div class="flex items-center gap-2 mb-2 sm:mb-0">
+                    <span id="auth-user" class="text-xs text-gray-400 max-w-32 truncate">尚未登入</span>
+                    <button id="login-btn" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md transition duration-300">
+                        Google 登入
+                    </button>
+                    <button id="logout-btn" class="hidden bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-md transition duration-300">
+                        登出
+                    </button>
+                </div>
             </div>
         </header>
 
@@ -155,9 +165,15 @@
             collection,
             doc,
             getDocs,
-            setDoc,
             writeBatch
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import {
+            getAuth,
+            GoogleAuthProvider,
+            onAuthStateChanged,
+            signInWithPopup,
+            signOut
+        } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCaysz07Kv8SUqnv-uCzOiSJCVluDUhL10",
@@ -171,6 +187,8 @@
 
         const firebaseApp = initializeApp(firebaseConfig);
         const db = getFirestore(firebaseApp);
+        const auth = getAuth(firebaseApp);
+        const googleProvider = new GoogleAuthProvider();
 
         document.addEventListener('DOMContentLoaded', () => {
             // --- 核心配置：更換金鑰名稱以實現全新資料夾效果 ---
@@ -180,12 +198,45 @@
             let homeworks = [];
             let stateHistory = [];
             let remoteHomeworkIds = new Set();
+            let currentUser = null;
+            let dataLoaded = false;
             const studentIds = ['2', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '21', '22', '23', '24', '25', '26', '28', '29', '30', '31', '32'];
             let draggedId = null;
             let homeworkToDelete = null;
 
+            const authUser = document.getElementById('auth-user');
+            const loginBtn = document.getElementById('login-btn');
+            const logoutBtn = document.getElementById('logout-btn');
+
+            const updateAuthUI = () => {
+                const signedIn = Boolean(currentUser);
+                loginBtn.classList.toggle('hidden', signedIn);
+                logoutBtn.classList.toggle('hidden', !signedIn);
+                authUser.textContent = signedIn ? currentUser.displayName || currentUser.email : '尚未登入';
+            };
+
+            const ensureSignedIn = () => {
+                if (currentUser) return true;
+                alert('請先使用 Google 登入。');
+                return false;
+            };
+
+            loginBtn.onclick = async () => {
+                try {
+                    await signInWithPopup(auth, googleProvider);
+                } catch (error) {
+                    console.error('Google 登入失敗:', error);
+                    alert('Google 登入失敗，請稍後再試。');
+                }
+            };
+
+            logoutBtn.onclick = async () => {
+                await signOut(auth);
+            };
+
             // --- 資料儲存與恢復功能 ---
             const saveState = async () => {
+                if (!ensureSignedIn()) return;
                 localStorage.setItem(DATA_KEY, JSON.stringify(homeworks));
                 localStorage.setItem(HISTORY_KEY, JSON.stringify(stateHistory));
 
@@ -210,12 +261,14 @@
             };
 
             const pushHistory = (save = true) => {
+                if (!ensureSignedIn()) return;
                 stateHistory.push(JSON.parse(JSON.stringify(homeworks)));
                 if (stateHistory.length > 10) stateHistory.shift();
                 updateUndoBtn();
             };
 
             const undoAction = async () => {
+                if (!ensureSignedIn()) return;
                 if (stateHistory.length <= 1) return;
                 stateHistory.pop();
                 homeworks = JSON.parse(JSON.stringify(stateHistory[stateHistory.length - 1]));
@@ -278,6 +331,7 @@
 
             // --- 功能函式 (掛載到 window) ---
             window.toggleStudent = async (hwId, sid) => {
+                if (!ensureSignedIn()) return;
                 pushHistory();
                 const hw = homeworks.find(h => h.id === hwId);
                 const cur = hw.submissions[sid];
@@ -290,6 +344,7 @@
             };
 
             window.manualClose = async (hwId) => {
+                if (!ensureSignedIn()) return;
                 pushHistory();
                 const hw = homeworks.find(h => h.id === hwId);
                 studentIds.forEach(sid => { if(hw.submissions[sid] === 'pending') hw.submissions[sid] = 'overdue'; });
@@ -315,6 +370,7 @@
             // --- 事件監聽 ---
             document.getElementById('homework-form').onsubmit = async (e) => {
                 e.preventDefault();
+                if (!ensureSignedIn()) return;
                 pushHistory();
                 const id = document.getElementById('homework-id').value;
                 const data = {
@@ -339,6 +395,7 @@
             };
 
             document.getElementById('confirm-delete-btn').onclick = async () => {
+                if (!ensureSignedIn()) return;
                 pushHistory();
                 homeworks = homeworks.filter(h => h.id !== homeworkToDelete);
                 await saveState();
@@ -360,6 +417,7 @@
             };
 
             document.getElementById('sort-by-due-date-btn').onclick = async () => {
+                if (!ensureSignedIn()) return;
                 pushHistory();
                 homeworks.sort((a,b) => b.dueDate.localeCompare(a.dueDate));
                 await saveState();
@@ -379,6 +437,7 @@
                     else target.classList.add('drag-over-bottom');
                 };
                 list.ondrop = async e => {
+                    if (!ensureSignedIn()) return;
                     const target = e.target.closest('.draggable-card');
                     if (!target || target.dataset.id === draggedId) return;
                     pushHistory();
@@ -416,7 +475,20 @@
                 
                 render();
             };
-            init();
+            onAuthStateChanged(auth, async user => {
+                currentUser = user;
+                updateAuthUI();
+
+                if (user && !dataLoaded) {
+                    dataLoaded = true;
+                    await init();
+                } else if (!user) {
+                    dataLoaded = false;
+                    homeworks = [];
+                    remoteHomeworkIds = new Set();
+                    render();
+                }
+            });
         });
     </script>
 </body>
