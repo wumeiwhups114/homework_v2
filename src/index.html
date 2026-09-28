@@ -223,6 +223,9 @@
             let remoteHomeworkIds = new Set();
             let currentUser = null;
             let dataLoaded = false;
+            let selectedStudentId = '';
+            let currentStudentRows = [];
+            let currentOverallRows = [];
             const defaultStudentIds = ['2', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '21', '22', '23', '24', '25', '26', '28', '29', '30', '31', '32'];
             let studentIds = [...defaultStudentIds];
             let draggedId = null;
@@ -417,6 +420,99 @@
                 return 'bg-yellow-500';
             };
 
+            const statusLabels = {
+                pending: '未繳交',
+                submitted: '準時繳交',
+                overdue: '缺交',
+                late_submitted: '逾期補交',
+                not_required: '免交'
+            };
+
+            const escapeHtml = value => String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+
+            const csvCell = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
+
+            const downloadCsv = (filename, headers, rows) => {
+                const csv = [headers, ...rows]
+                    .map(row => row.map(csvCell).join(','))
+                    .join('\r\n');
+                const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                link.click();
+                URL.revokeObjectURL(url);
+            };
+
+            const getStudentRows = studentId => homeworks
+                .filter(hw => Object.prototype.hasOwnProperty.call(hw.submissions, studentId))
+                .map(hw => ({
+                    title: hw.title,
+                    studentId,
+                    assignmentDate: hw.assignmentDate,
+                    registrationDate: hw.registrationDate,
+                    dueDate: hw.dueDate,
+                    status: hw.submissions[studentId]
+                }));
+
+            const renderStudentReport = studentId => {
+                selectedStudentId = studentId;
+                currentStudentRows = getStudentRows(studentId);
+                const requiredRows = currentStudentRows.filter(row => row.status !== 'not_required');
+                const submitted = requiredRows.filter(row => row.status === 'submitted').length;
+                const lateSubmitted = requiredRows.filter(row => row.status === 'late_submitted').length;
+                const overdue = requiredRows.filter(row => row.status === 'overdue').length;
+                const pending = requiredRows.filter(row => row.status === 'pending').length;
+                const notRequired = currentStudentRows.length - requiredRows.length;
+
+                document.getElementById('student-report-title').textContent = `座號 ${studentId} 報告`;
+                document.getElementById('student-report-content').innerHTML = `
+                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4 text-center text-xs">
+                        <div class="bg-green-700 rounded p-2">準時<br><strong>${submitted}</strong></div>
+                        <div class="bg-blue-700 rounded p-2">逾期補交<br><strong>${lateSubmitted}</strong></div>
+                        <div class="bg-red-700 rounded p-2">缺交<br><strong>${overdue}</strong></div>
+                        <div class="bg-yellow-700 rounded p-2">未繳交<br><strong>${pending}</strong></div>
+                        <div class="bg-gray-600 rounded p-2">免交<br><strong>${notRequired}</strong></div>
+                    </div>
+                    <div class="space-y-2">
+                        ${currentStudentRows.length === 0 ? '<p class="text-gray-400">沒有相關作業紀錄。</p>' : currentStudentRows.map(row => `
+                            <div class="flex justify-between gap-3 border-b border-gray-700 pb-2 text-sm">
+                                <span class="truncate">${escapeHtml(row.title)}</span>
+                                <span class="whitespace-nowrap text-gray-300">${escapeHtml(statusLabels[row.status] || row.status)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                openModal('student-report-modal');
+            };
+
+            const getOverallRows = () => homeworks.flatMap(hw =>
+                Object.entries(hw.submissions).map(([studentId, status]) => ({
+                    title: hw.title,
+                    studentId,
+                    assignmentDate: hw.assignmentDate,
+                    registrationDate: hw.registrationDate,
+                    dueDate: hw.dueDate,
+                    status
+                }))
+            );
+
+            const renderOverallReport = () => {
+                const start = document.getElementById('start-date').value;
+                const end = document.getElementById('end-date').value;
+                currentOverallRows = getOverallRows().filter(row =>
+                    (!start || row.dueDate >= start) && (!end || row.dueDate <= end)
+                );
+                document.getElementById('overall-report-modal').querySelector('h2').textContent =
+                    `全體匯出（${currentOverallRows.length} 筆）`;
+            };
+
             // --- 功能函式 (掛載到 window) ---
             window.toggleStudent = async (hwId, sid) => {
                 if (!ensureSignedIn()) return;
@@ -456,6 +552,46 @@
             window.askDelete = (id) => { homeworkToDelete = id; openModal('delete-confirm-modal'); };
             window.closeModal = (id) => document.getElementById(id).classList.add('hidden');
             window.openModal = (id) => document.getElementById(id).classList.remove('hidden');
+
+            document.getElementById('student-selector').onchange = event => {
+                if (!event.target.value) return;
+                if (!ensureSignedIn()) {
+                    event.target.value = '';
+                    return;
+                }
+                renderStudentReport(event.target.value);
+            };
+
+            document.getElementById('show-overall-report-btn').onclick = () => {
+                if (!ensureSignedIn()) return;
+                renderOverallReport();
+                openModal('overall-report-modal');
+            };
+
+            document.getElementById('start-date').onchange = renderOverallReport;
+            document.getElementById('end-date').onchange = renderOverallReport;
+
+            document.getElementById('export-student-csv-btn').onclick = () => {
+                if (!currentStudentRows.length) return;
+                downloadCsv(`student-${selectedStudentId}-report.csv`,
+                    ['座號', '作業標題', '作業日期', '登記日期', '截止日期', '狀態'],
+                    currentStudentRows.map(row => [
+                        row.studentId, row.title, row.assignmentDate,
+                        row.registrationDate, row.dueDate, statusLabels[row.status] || row.status
+                    ])
+                );
+            };
+
+            document.getElementById('export-overall-csv-btn').onclick = () => {
+                renderOverallReport();
+                downloadCsv('homework-overall-report.csv',
+                    ['座號', '作業標題', '作業日期', '登記日期', '截止日期', '狀態'],
+                    currentOverallRows.map(row => [
+                        row.studentId, row.title, row.assignmentDate,
+                        row.registrationDate, row.dueDate, statusLabels[row.status] || row.status
+                    ])
+                );
+            };
 
             // --- 事件監聽 ---
             document.getElementById('homework-form').onsubmit = async (e) => {
