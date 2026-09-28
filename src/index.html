@@ -52,6 +52,9 @@
                 <button id="show-overall-report-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-md transition duration-300 mb-2 sm:mb-0">
                     總覽與匯出
                 </button>
+                <button id="student-settings-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-md transition duration-300 mb-2 sm:mb-0">
+                    學生名單設定
+                </button>
 
                 <div class="flex items-center gap-2 mb-2 sm:mb-0">
                     <span id="auth-user" class="text-xs text-gray-400 max-w-32 truncate">尚未登入</span>
@@ -69,6 +72,7 @@
             <span class="flex items-center">未繳/準時：<span class="w-3 h-3 rounded-full bg-yellow-500 mx-1"></span>→<span class="w-3 h-3 rounded-full bg-green-500 mx-1"></span></span>
             <span class="flex items-center">缺交：<span class="w-3 h-3 rounded-full bg-red-500 mx-1"></span></span>
             <span class="flex items-center">逾期補交：<span class="w-3 h-3 rounded-full bg-blue-500 mx-1"></span></span>
+            <span class="flex items-center">免交：<span class="w-3 h-3 rounded-full bg-gray-500 mx-1"></span></span>
         </div>
 
         <main id="homework-list" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -108,6 +112,11 @@
                             <input type="date" id="dueDate" class="w-full bg-gray-700 border border-gray-600 rounded-md py-1 px-2 text-sm focus:ring-1 focus:ring-cyan-500 outline-none" required>
                         </div>
                     </div>
+                </div>
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-300 mb-2">免交學生</label>
+                    <p class="text-xs text-gray-400 mb-2">勾選後，這些學生不需要繳交此作業，也不會被算為缺交。</p>
+                    <div id="student-exclusion-list" class="grid grid-cols-4 gap-2 max-h-32 overflow-y-auto p-2 bg-gray-700 rounded-md"></div>
                 </div>
                 <div class="flex justify-end space-x-3">
                     <button type="button" onclick="closeModal('homework-modal')" class="bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded-md transition">取消</button>
@@ -158,6 +167,18 @@
         </div>
     </div>
 
+    <div id="student-settings-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden">
+        <div class="bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6">
+            <h2 class="text-2xl font-bold mb-2 text-cyan-400">學生名單設定</h2>
+            <p class="text-sm text-gray-400 mb-4">每行輸入一個座號。這只會套用到之後新增的作業。</p>
+            <textarea id="student-list-input" rows="10" class="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:ring-2 focus:ring-cyan-500 outline-none" placeholder="例如：\n2\n4\n5"></textarea>
+            <div class="flex justify-end space-x-3 mt-4">
+                <button type="button" onclick="closeModal('student-settings-modal')" class="bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded-md transition">取消</button>
+                <button id="save-student-settings-btn" class="bg-cyan-500 hover:bg-cyan-600 text-white py-2 px-4 rounded-md transition">儲存名單</button>
+            </div>
+        </div>
+    </div>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import {
@@ -165,6 +186,8 @@
             collection,
             doc,
             getDocs,
+            getDoc,
+            setDoc,
             writeBatch
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import {
@@ -200,13 +223,17 @@
             let remoteHomeworkIds = new Set();
             let currentUser = null;
             let dataLoaded = false;
-            const studentIds = ['2', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '21', '22', '23', '24', '25', '26', '28', '29', '30', '31', '32'];
+            const defaultStudentIds = ['2', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '21', '22', '23', '24', '25', '26', '28', '29', '30', '31', '32'];
+            let studentIds = [...defaultStudentIds];
             let draggedId = null;
             let homeworkToDelete = null;
 
             const authUser = document.getElementById('auth-user');
             const loginBtn = document.getElementById('login-btn');
             const logoutBtn = document.getElementById('logout-btn');
+            const studentSettingsBtn = document.getElementById('student-settings-btn');
+            const studentListInput = document.getElementById('student-list-input');
+            const saveStudentSettingsBtn = document.getElementById('save-student-settings-btn');
 
             const updateAuthUI = () => {
                 const signedIn = Boolean(currentUser);
@@ -232,6 +259,66 @@
 
             logoutBtn.onclick = async () => {
                 await signOut(auth);
+            };
+
+            const populateStudentSelector = () => {
+                const selector = document.getElementById('student-selector');
+                selector.innerHTML = '<option value="">查詢學生狀況</option>';
+                studentIds.forEach(sid => {
+                    const opt = document.createElement('option');
+                    opt.value = sid;
+                    opt.textContent = `座號 ${sid}`;
+                    selector.appendChild(opt);
+                });
+            };
+
+            const renderStudentExclusionOptions = (submissions = null) => {
+                const ids = submissions ? Object.keys(submissions) : studentIds;
+                const list = document.getElementById('student-exclusion-list');
+                list.innerHTML = ids.map(sid => `
+                    <label class="flex items-center gap-1 text-xs text-gray-200">
+                        <input type="checkbox" name="not-required-student" value="${sid}" ${submissions?.[sid] === 'not_required' ? 'checked' : ''}>
+                        座號 ${sid}
+                    </label>
+                `).join('');
+            };
+
+            const loadStudentSettings = async () => {
+                try {
+                    const settings = await getDoc(doc(db, 'settings', 'classroom'));
+                    if (settings.exists() && Array.isArray(settings.data().studentIds) && settings.data().studentIds.length > 0) {
+                        studentIds = settings.data().studentIds.map(String);
+                    }
+                } catch (error) {
+                    console.warn('無法讀取學生名單設定，使用預設名單:', error);
+                }
+                populateStudentSelector();
+            };
+
+            studentSettingsBtn.onclick = () => {
+                if (!ensureSignedIn()) return;
+                studentListInput.value = studentIds.join('\n');
+                openModal('student-settings-modal');
+            };
+
+            saveStudentSettingsBtn.onclick = async () => {
+                if (!ensureSignedIn()) return;
+                const nextIds = [...new Set(studentListInput.value.split(/[\s,]+/).map(id => id.trim()).filter(Boolean))];
+                if (nextIds.length === 0) {
+                    alert('學生名單不能是空的。');
+                    return;
+                }
+
+                try {
+                    await setDoc(doc(db, 'settings', 'classroom'), { studentIds: nextIds });
+                    studentIds = nextIds;
+                    populateStudentSelector();
+                    closeModal('student-settings-modal');
+                    alert('學生名單已更新。新名單只會套用到之後新增的作業。');
+                } catch (error) {
+                    console.error('學生名單儲存失敗:', error);
+                    alert('學生名單儲存失敗，請確認你是教師帳號且 Firestore Rules 已更新。');
+                }
             };
 
             // --- 資料儲存與恢復功能 ---
@@ -309,8 +396,8 @@
                             <p>截止日: <span class="text-amber-400">${hw.dueDate}</span></p>
                         </div>
                         <div class="grid grid-cols-6 gap-1 mb-4">
-                            ${studentIds.map(sid => `
-                                <button onclick="toggleStudent('${hw.id}', '${sid}')" class="w-5 h-5 rounded-full ${getBtnColor(hw.submissions[sid])} text-[9px] flex items-center justify-center">${sid}</button>
+                            ${Object.keys(hw.submissions).map(sid => `
+                                <button ${hw.submissions[sid] === 'not_required' ? 'disabled' : ''} onclick="toggleStudent('${hw.id}', '${sid}')" class="w-5 h-5 rounded-full ${getBtnColor(hw.submissions[sid])} text-[9px] flex items-center justify-center disabled:cursor-not-allowed">${sid}</button>
                             `).join('')}
                         </div>
                         <button onclick="manualClose('${hw.id}')" class="mt-auto text-xs bg-gray-700 hover:bg-amber-700 py-1 rounded transition">手動截止剩餘</button>
@@ -326,15 +413,17 @@
                 if (s === 'submitted') return 'bg-green-500';
                 if (s === 'overdue') return 'bg-red-500';
                 if (s === 'late_submitted') return 'bg-blue-500';
+                if (s === 'not_required') return 'bg-gray-500';
                 return 'bg-yellow-500';
             };
 
             // --- 功能函式 (掛載到 window) ---
             window.toggleStudent = async (hwId, sid) => {
                 if (!ensureSignedIn()) return;
-                pushHistory();
                 const hw = homeworks.find(h => h.id === hwId);
                 const cur = hw.submissions[sid];
+                if (cur === 'not_required') return;
+                pushHistory();
                 if (cur === 'pending') hw.submissions[sid] = 'submitted';
                 else if (cur === 'submitted') hw.submissions[sid] = 'pending';
                 else if (cur === 'overdue') hw.submissions[sid] = 'late_submitted';
@@ -347,7 +436,7 @@
                 if (!ensureSignedIn()) return;
                 pushHistory();
                 const hw = homeworks.find(h => h.id === hwId);
-                studentIds.forEach(sid => { if(hw.submissions[sid] === 'pending') hw.submissions[sid] = 'overdue'; });
+                Object.keys(hw.submissions).forEach(sid => { if(hw.submissions[sid] === 'pending') hw.submissions[sid] = 'overdue'; });
                 await saveState();
                 render();
             };
@@ -360,6 +449,7 @@
                 document.getElementById('registrationDate').value = hw.registrationDate;
                 document.getElementById('dueDate').value = hw.dueDate;
                 document.getElementById('modal-title').textContent = "編輯作業";
+                renderStudentExclusionOptions(hw.submissions);
                 openModal('homework-modal');
             };
 
@@ -379,13 +469,22 @@
                     registrationDate: document.getElementById('registrationDate').value,
                     dueDate: document.getElementById('dueDate').value
                 };
+                const notRequiredIds = new Set(
+                    [...document.querySelectorAll('input[name="not-required-student"]:checked')]
+                        .map(input => input.value)
+                );
 
                 if (id) {
                     const idx = homeworks.findIndex(h => h.id === id);
-                    homeworks[idx] = { ...homeworks[idx], ...data };
+                    const submissions = { ...homeworks[idx].submissions };
+                    Object.keys(submissions).forEach(sid => {
+                        if (notRequiredIds.has(sid)) submissions[sid] = 'not_required';
+                        else if (submissions[sid] === 'not_required') submissions[sid] = 'pending';
+                    });
+                    homeworks[idx] = { ...homeworks[idx], ...data, submissions };
                 } else {
                     const subs = {};
-                    studentIds.forEach(sid => subs[sid] = 'pending');
+                    studentIds.forEach(sid => subs[sid] = notRequiredIds.has(sid) ? 'not_required' : 'pending');
                     // 自動置頂：使用 unshift 插入到索引 0
                     homeworks.unshift({ id: Date.now().toString(), ...data, submissions: subs });
                 }
@@ -413,6 +512,7 @@
                 document.getElementById('assignmentDate').value = now;
                 document.getElementById('registrationDate').value = now;
                 document.getElementById('dueDate').value = now;
+                renderStudentExclusionOptions();
                 openModal('homework-modal');
             };
 
@@ -467,12 +567,7 @@
                 stateHistory = hist ? JSON.parse(hist) : [];
                 if (stateHistory.length === 0) pushHistory(false);
                 
-                studentIds.forEach(sid => {
-                    const opt = document.createElement('option');
-                    opt.value = sid; opt.textContent = `座號 ${sid}`;
-                    document.getElementById('student-selector').appendChild(opt);
-                });
-                
+                await loadStudentSettings();
                 render();
             };
             onAuthStateChanged(auth, async user => {
