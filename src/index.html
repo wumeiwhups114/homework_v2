@@ -140,16 +140,7 @@
     <div id="overall-report-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden">
         <div class="bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6">
             <h2 class="text-2xl font-bold mb-4 text-cyan-400">全體匯出</h2>
-            <div class="space-y-4 mb-6">
-                <div>
-                    <label class="text-sm text-gray-400">開始日期</label>
-                    <input type="date" id="start-date" class="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3">
-                </div>
-                <div>
-                    <label class="text-sm text-gray-400">結束日期</label>
-                    <input type="date" id="end-date" class="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3">
-                </div>
-            </div>
+            <p id="overall-report-summary" class="text-sm text-gray-400 mb-6">每位學生一列，每份作業一欄。</p>
             <div class="flex justify-end space-x-3">
                 <button type="button" onclick="closeModal('overall-report-modal')" class="bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded-md transition">取消</button>
                 <button id="export-overall-csv-btn" class="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md transition">匯出 CSV</button>
@@ -492,25 +483,28 @@
                 openModal('student-report-modal');
             };
 
-            const getOverallRows = () => homeworks.flatMap(hw =>
-                Object.entries(hw.submissions).map(([studentId, status]) => ({
-                    title: hw.title,
-                    studentId,
-                    assignmentDate: hw.assignmentDate,
-                    registrationDate: hw.registrationDate,
-                    dueDate: hw.dueDate,
-                    status
-                }))
-            );
-
             const renderOverallReport = () => {
-                const start = document.getElementById('start-date').value;
-                const end = document.getElementById('end-date').value;
-                currentOverallRows = getOverallRows().filter(row =>
-                    (!start || row.dueDate >= start) && (!end || row.dueDate <= end)
-                );
-                document.getElementById('overall-report-modal').querySelector('h2').textContent =
-                    `全體匯出（${currentOverallRows.length} 筆）`;
+                const studentOrder = [...studentIds];
+                const allStudentIds = new Set(studentOrder);
+                homeworks.forEach(hw => Object.keys(hw.submissions).forEach(sid => allStudentIds.add(sid)));
+                const orderedStudentIds = [
+                    ...studentOrder,
+                    ...[...allStudentIds].filter(sid => !studentOrder.includes(sid))
+                ];
+                const homeworkHeaders = homeworks.map(hw => hw.title);
+                currentOverallRows = {
+                    headers: ['座號', ...homeworkHeaders],
+                    rows: orderedStudentIds.map(studentId => [
+                        studentId,
+                        ...homeworks.map(hw => {
+                            const status = hw.submissions[studentId];
+                            if (status === 'not_required') return '';
+                            return status === 'submitted' ? '準時繳交' : '未繳交';
+                        })
+                    ])
+                };
+                document.getElementById('overall-report-summary').textContent =
+                    `共 ${orderedStudentIds.length} 位學生、${homeworks.length} 份作業；每位學生一列，每份作業一欄。`;
             };
 
             // --- 功能函式 (掛載到 window) ---
@@ -568,9 +562,6 @@
                 openModal('overall-report-modal');
             };
 
-            document.getElementById('start-date').onchange = renderOverallReport;
-            document.getElementById('end-date').onchange = renderOverallReport;
-
             document.getElementById('export-student-csv-btn').onclick = () => {
                 if (!currentStudentRows.length) return;
                 downloadCsv(`student-${selectedStudentId}-report.csv`,
@@ -584,13 +575,7 @@
 
             document.getElementById('export-overall-csv-btn').onclick = () => {
                 renderOverallReport();
-                downloadCsv('homework-overall-report.csv',
-                    ['座號', '作業標題', '作業日期', '登記日期', '截止日期', '狀態'],
-                    currentOverallRows.map(row => [
-                        row.studentId, row.title, row.assignmentDate,
-                        row.registrationDate, row.dueDate, statusLabels[row.status] || row.status
-                    ])
-                );
+                downloadCsv('homework-overall-report.csv', currentOverallRows.headers, currentOverallRows.rows);
             };
 
             // --- 事件監聽 ---
