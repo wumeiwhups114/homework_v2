@@ -486,8 +486,8 @@
                         <div class="flex justify-between items-start mb-2">
                             <h3 class="font-bold text-cyan-300 truncate">${hw.title}</h3>
                             <div class="flex space-x-1">
-                                <button onclick="editHomework('${hw.id}')" class="text-gray-400 hover:text-white"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg></button>
-                                <button onclick="askDelete('${hw.id}')" class="text-gray-400 hover:text-red-500"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                                 <button ${isScreenLocked ? 'disabled' : ''} onclick="editHomework('${hw.id}')" class="text-gray-400 hover:text-white disabled:cursor-not-allowed"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg></button>
+                                 <button ${isScreenLocked ? 'disabled' : ''} onclick="askDelete('${hw.id}')" class="text-gray-400 hover:text-red-500 disabled:cursor-not-allowed"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
                             </div>
                         </div>
                         <div class="text-[10px] text-gray-400 mb-3 leading-tight">
@@ -496,10 +496,10 @@
                         </div>
                         <div class="grid grid-cols-6 gap-1 mb-4">
                             ${Object.keys(hw.submissions).map(sid => `
-                                <button ${hw.submissions[sid] === 'not_required' ? 'disabled' : ''} onclick="toggleStudent('${hw.id}', '${sid}')" class="w-5 h-5 rounded-full ${getBtnColor(hw.submissions[sid])} text-[9px] flex items-center justify-center disabled:cursor-not-allowed">${sid}</button>
+                                <button ${(isScreenLocked || hw.submissions[sid] === 'not_required') ? 'disabled' : ''} onclick="toggleStudent('${hw.id}', '${sid}')" class="w-5 h-5 rounded-full ${getBtnColor(hw.submissions[sid])} text-[9px] flex items-center justify-center disabled:cursor-not-allowed">${sid}</button>
                             `).join('')}
                         </div>
-                        <button onclick="manualClose('${hw.id}')" class="mt-auto text-xs bg-gray-700 hover:bg-amber-700 py-1 rounded transition">手動截止剩餘</button>
+                        <button ${isScreenLocked ? 'disabled' : ''} onclick="manualClose('${hw.id}')" class="mt-auto text-xs bg-gray-700 hover:bg-amber-700 py-1 rounded transition disabled:cursor-not-allowed">手動截止剩餘</button>
                     `;
                     list.appendChild(card);
                     card.addEventListener('dragstart', e => {
@@ -626,7 +626,7 @@
 
             // --- 功能函式 (掛載到 window) ---
             window.toggleStudent = async (hwId, sid) => {
-                if (!ensureSignedIn()) return;
+                if (isScreenLocked || !ensureSignedIn()) return;
                 const hw = homeworks.find(h => h.id === hwId);
                 const cur = hw.submissions[sid];
                 if (cur === 'not_required') return;
@@ -640,7 +640,7 @@
             };
 
             window.manualClose = async (hwId) => {
-                if (!ensureSignedIn()) return;
+                if (isScreenLocked || !ensureSignedIn()) return;
                 pushHistory();
                 const hw = homeworks.find(h => h.id === hwId);
                 Object.keys(hw.submissions).forEach(sid => { if(hw.submissions[sid] === 'pending') hw.submissions[sid] = 'overdue'; });
