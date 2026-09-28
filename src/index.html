@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>作業追蹤系統 - 新資料庫版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', 'Noto Sans TC', sans-serif; }
+        html, body { overflow-x: hidden; }
+        .modal-backdrop { background-color: rgba(0, 0, 0, 0.75); }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #2d3748; }
+        ::-webkit-scrollbar-thumb { background: #4a5568; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #718096; }
+        .draggable-card { cursor: grab; transition: all 0.3s ease; }
+        .draggable-card:active { cursor: grabbing; }
+        .dragging { opacity: 0.4; }
+        .drag-over-top { border-top: 4px solid #38bdf8; }
+        .drag-over-bottom { border-bottom: 4px solid #38bdf8; }
+    </style>
+</head>
+<body class="bg-gray-900 text-white antialiased">
+
+    <div id="app" class="container mx-auto p-4 md:p-6 lg:p-8 max-w-[1600px]">
+
+        <header class="flex flex-col sm:flex-row justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold text-cyan-400 mb-4 sm:mb-0">115-1 602作業繳交系統 </h1>
+            <div class="flex items-center space-x-2 flex-wrap justify-end">
+                <div class="relative mb-2 sm:mb-0">
+                    <select id="student-selector" class="bg-gray-700 border border-gray-600 rounded-md py-2 pl-3 pr-8 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 appearance-none">
+                        <option value="">查詢學生狀況</option>
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
+                        <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                    </div>
+                </div>
+                
+                <button id="undo-btn" class="bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-4 rounded-md transition duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center mb-2 sm:mb-0">
+                    <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    恢復上一步
+                </button>
+                
+                <button id="sort-by-due-date-btn" class="bg-sky-600 hover:bg-sky-700 text-white font-semibold py-2 px-4 rounded-md transition duration-300 flex items-center mb-2 sm:mb-0">
+                    <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"></path></svg>
+                    截止日最新優先
+                </button>
+
+                <button id="show-overall-report-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-md transition duration-300 mb-2 sm:mb-0">
+                    總覽與匯出
+                </button>
+            </div>
+        </header>
+
+        <div class="flex justify-center items-center flex-wrap gap-x-6 gap-y-2 text-sm text-gray-300 mb-6">
+            <span class="flex items-center">未繳/準時：<span class="w-3 h-3 rounded-full bg-yellow-500 mx-1"></span>→<span class="w-3 h-3 rounded-full bg-green-500 mx-1"></span></span>
+            <span class="flex items-center">缺交：<span class="w-3 h-3 rounded-full bg-red-500 mx-1"></span></span>
+            <span class="flex items-center">逾期補交：<span class="w-3 h-3 rounded-full bg-blue-500 mx-1"></span></span>
+        </div>
+
+        <main id="homework-list" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        </main>
+        
+        <div id="no-homework-message" class="text-center py-12 text-gray-500 hidden">
+            <h3 class="mt-2 text-lg font-medium text-gray-400">目前沒有作業紀錄</h3>
+            <p class="mt-1 text-sm text-gray-500">點擊右下角按鈕新增。</p>
+        </div>
+
+        <button id="add-homework-btn" class="fixed bottom-8 right-8 bg-cyan-500 hover:bg-cyan-600 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-lg transition transform hover:scale-110">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+        </button>
+    </div>
+
+    <div id="homework-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden">
+        <div class="bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6">
+            <h2 id="modal-title" class="text-2xl font-bold mb-4 text-cyan-400">新增作業</h2>
+            <form id="homework-form">
+                <input type="hidden" id="homework-id">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-300 mb-1">作業標題</label>
+                    <input type="text" id="title" class="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 focus:ring-2 focus:ring-cyan-500 outline-none" required>
+                </div>
+                <div class="grid grid-cols-1 gap-4 mb-6">
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <label class="text-xs text-gray-400">作業日期</label>
+                            <input type="date" id="assignmentDate" class="w-full bg-gray-700 border border-gray-600 rounded-md py-1 px-2 text-sm focus:ring-1 focus:ring-cyan-500 outline-none" required>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400">登記日期</label>
+                            <input type="date" id="registrationDate" class="w-full bg-gray-700 border border-gray-600 rounded-md py-1 px-2 text-sm focus:ring-1 focus:ring-cyan-500 outline-none" required>
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-400">截止日期</label>
+                            <input type="date" id="dueDate" class="w-full bg-gray-700 border border-gray-600 rounded-md py-1 px-2 text-sm focus:ring-1 focus:ring-cyan-500 outline-none" required>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex justify-end space-x-3">
+                    <button type="button" onclick="closeModal('homework-modal')" class="bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded-md transition">取消</button>
+                    <button type="submit" class="bg-cyan-500 hover:bg-cyan-600 text-white py-2 px-4 rounded-md transition">儲存作業</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="student-report-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden">
+        <div class="bg-gray-800 rounded-lg shadow-xl w-full max-w-lg p-6">
+            <h2 id="student-report-title" class="text-2xl font-bold mb-4 text-cyan-400">學生報告</h2>
+            <div id="student-report-content" class="max-h-80 overflow-y-auto pr-2 mb-6"></div>
+            <div class="flex justify-end space-x-3">
+                <button type="button" onclick="closeModal('student-report-modal')" class="bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded-md transition">關閉</button>
+                <button id="export-student-csv-btn" class="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md transition">匯出 CSV</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="overall-report-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden">
+        <div class="bg-gray-800 rounded-lg shadow-xl w-full max-w-md p-6">
+            <h2 class="text-2xl font-bold mb-4 text-cyan-400">全體匯出</h2>
+            <div class="space-y-4 mb-6">
+                <div>
+                    <label class="text-sm text-gray-400">開始日期</label>
+                    <input type="date" id="start-date" class="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3">
+                </div>
+                <div>
+                    <label class="text-sm text-gray-400">結束日期</label>
+                    <input type="date" id="end-date" class="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3">
+                </div>
+            </div>
+            <div class="flex justify-end space-x-3">
+                <button type="button" onclick="closeModal('overall-report-modal')" class="bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded-md transition">取消</button>
+                <button id="export-overall-csv-btn" class="bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md transition">匯出 CSV</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="delete-confirm-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden">
+        <div class="bg-gray-800 rounded-lg shadow-xl w-full max-w-sm p-6 text-center">
+            <h3 class="text-lg font-medium text-white mb-6">確定要刪除這項作業嗎？</h3>
+            <div class="flex justify-center space-x-4">
+                <button onclick="closeModal('delete-confirm-modal')" class="bg-gray-600 hover:bg-gray-700 text-white py-2 px-6 rounded-md transition">取消</button>
+                <button id="confirm-delete-btn" class="bg-red-600 hover:bg-red-700 text-white py-2 px-6 rounded-md transition">刪除</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- 核心配置：更換金鑰名稱以實現全新資料夾效果 ---
+            const DATA_KEY = 'homeworks_v2_data';
+            const HISTORY_KEY = 'homeworks_v2_history';
+            
+            let homeworks = [];
+            let stateHistory = [];
+            const studentIds = ['2', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '21', '22', '23', '24', '25', '26', '28', '29', '30', '31', '32'];
+            let draggedId = null;
+            let homeworkToDelete = null;
+
+            // --- 資料儲存與恢復功能 ---
+            const saveState = () => {
+                localStorage.setItem(DATA_KEY, JSON.stringify(homeworks));
+                localStorage.setItem(HISTORY_KEY, JSON.stringify(stateHistory));
+            };
+
+            const pushHistory = (save = true) => {
+                stateHistory.push(JSON.parse(JSON.stringify(homeworks)));
+                if (stateHistory.length > 10) stateHistory.shift();
+                if (save) saveState();
+                updateUndoBtn();
+            };
+
+            const undoAction = () => {
+                if (stateHistory.length <= 1) return;
+                stateHistory.pop();
+                homeworks = JSON.parse(JSON.stringify(stateHistory[stateHistory.length - 1]));
+                saveState();
+                render();
+            };
+
+            const updateUndoBtn = () => {
+                const btn = document.getElementById('undo-btn');
+                btn.disabled = stateHistory.length <= 1;
+                btn.style.opacity = btn.disabled ? "0.5" : "1";
+            };
+
+            // --- 渲染與操作邏輯 ---
+            const render = () => {
+                const list = document.getElementById('homework-list');
+                const emptyMsg = document.getElementById('no-homework-message');
+                list.innerHTML = '';
+                
+                if (homeworks.length === 0) emptyMsg.classList.remove('hidden');
+                else emptyMsg.classList.add('hidden');
+
+                homeworks.forEach(hw => {
+                    const card = document.createElement('div');
+                    card.className = 'bg-gray-800 rounded-lg shadow-md p-4 flex flex-col draggable-card border border-gray-700';
+                    card.setAttribute('draggable', 'true');
+                    card.setAttribute('data-id', hw.id);
+                    card.innerHTML = `
+                        <div class="flex justify-between items-start mb-2">
+                            <h3 class="font-bold text-cyan-300 truncate">${hw.title}</h3>
+                            <div class="flex space-x-1">
+                                <button onclick="editHomework('${hw.id}')" class="text-gray-400 hover:text-white"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg></button>
+                                <button onclick="askDelete('${hw.id}')" class="text-gray-400 hover:text-red-500"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                            </div>
+                        </div>
+                        <div class="text-[10px] text-gray-400 mb-3 leading-tight">
+                            <p>作業日: ${hw.assignmentDate}</p>
+                            <p>截止日: <span class="text-amber-400">${hw.dueDate}</span></p>
+                        </div>
+                        <div class="grid grid-cols-6 gap-1 mb-4">
+                            ${studentIds.map(sid => `
+                                <button onclick="toggleStudent('${hw.id}', '${sid}')" class="w-5 h-5 rounded-full ${getBtnColor(hw.submissions[sid])} text-[9px] flex items-center justify-center">${sid}</button>
+                            `).join('')}
+                        </div>
+                        <button onclick="manualClose('${hw.id}')" class="mt-auto text-xs bg-gray-700 hover:bg-amber-700 py-1 rounded transition">手動截止剩餘</button>
+                    `;
+                    list.appendChild(card);
+                    card.addEventListener('dragstart', e => { draggedId = hw.id; card.classList.add('dragging'); });
+                    card.addEventListener('dragend', () => { draggedId = null; card.classList.remove('dragging'); });
+                });
+                bindDragEvents();
+            };
+
+            const getBtnColor = (s) => {
+                if (s === 'submitted') return 'bg-green-500';
+                if (s === 'overdue') return 'bg-red-500';
+                if (s === 'late_submitted') return 'bg-blue-500';
+                return 'bg-yellow-500';
+            };
+
+            // --- 功能函式 (掛載到 window) ---
+            window.toggleStudent = (hwId, sid) => {
+                pushHistory();
+                const hw = homeworks.find(h => h.id === hwId);
+                const cur = hw.submissions[sid];
+                if (cur === 'pending') hw.submissions[sid] = 'submitted';
+                else if (cur === 'submitted') hw.submissions[sid] = 'pending';
+                else if (cur === 'overdue') hw.submissions[sid] = 'late_submitted';
+                else hw.submissions[sid] = 'overdue';
+                saveState();
+                render();
+            };
+
+            window.manualClose = (hwId) => {
+                pushHistory();
+                const hw = homeworks.find(h => h.id === hwId);
+                studentIds.forEach(sid => { if(hw.submissions[sid] === 'pending') hw.submissions[sid] = 'overdue'; });
+                saveState();
+                render();
+            };
+
+            window.editHomework = (id) => {
+                const hw = homeworks.find(h => h.id === id);
+                document.getElementById('homework-id').value = hw.id;
+                document.getElementById('title').value = hw.title;
+                document.getElementById('assignmentDate').value = hw.assignmentDate;
+                document.getElementById('registrationDate').value = hw.registrationDate;
+                document.getElementById('dueDate').value = hw.dueDate;
+                document.getElementById('modal-title').textContent = "編輯作業";
+                openModal('homework-modal');
+            };
+
+            window.askDelete = (id) => { homeworkToDelete = id; openModal('delete-confirm-modal'); };
+            window.closeModal = (id) => document.getElementById(id).classList.add('hidden');
+            window.openModal = (id) => document.getElementById(id).classList.remove('hidden');
+
+            // --- 事件監聽 ---
+            document.getElementById('homework-form').onsubmit = (e) => {
+                e.preventDefault();
+                pushHistory();
+                const id = document.getElementById('homework-id').value;
+                const data = {
+                    title: document.getElementById('title').value,
+                    assignmentDate: document.getElementById('assignmentDate').value,
+                    registrationDate: document.getElementById('registrationDate').value,
+                    dueDate: document.getElementById('dueDate').value
+                };
+
+                if (id) {
+                    const idx = homeworks.findIndex(h => h.id === id);
+                    homeworks[idx] = { ...homeworks[idx], ...data };
+                } else {
+                    const subs = {};
+                    studentIds.forEach(sid => subs[sid] = 'pending');
+                    // 自動置頂：使用 unshift 插入到索引 0
+                    homeworks.unshift({ id: Date.now().toString(), ...data, submissions: subs });
+                }
+                saveState();
+                render();
+                closeModal('homework-modal');
+            };
+
+            document.getElementById('confirm-delete-btn').onclick = () => {
+                pushHistory();
+                homeworks = homeworks.filter(h => h.id !== homeworkToDelete);
+                saveState();
+                render();
+                closeModal('delete-confirm-modal');
+            };
+
+            document.getElementById('undo-btn').onclick = undoAction;
+            
+            document.getElementById('add-homework-btn').onclick = () => {
+                document.getElementById('homework-form').reset();
+                document.getElementById('homework-id').value = '';
+                document.getElementById('modal-title').textContent = "新增作業";
+                const now = new Date().toISOString().split('T')[0];
+                document.getElementById('assignmentDate').value = now;
+                document.getElementById('registrationDate').value = now;
+                document.getElementById('dueDate').value = now;
+                openModal('homework-modal');
+            };
+
+            document.getElementById('sort-by-due-date-btn').onclick = () => {
+                pushHistory();
+                homeworks.sort((a,b) => b.dueDate.localeCompare(a.dueDate));
+                saveState();
+                render();
+            };
+
+            // --- 拖曳排序 ---
+            const bindDragEvents = () => {
+                const list = document.getElementById('homework-list');
+                list.ondragover = e => {
+                    e.preventDefault();
+                    const target = e.target.closest('.draggable-card');
+                    if (!target || target.dataset.id === draggedId) return;
+                    document.querySelectorAll('.draggable-card').forEach(c => c.classList.remove('drag-over-top', 'drag-over-bottom'));
+                    const rect = target.getBoundingClientRect();
+                    if (e.clientY - rect.top < rect.height / 2) target.classList.add('drag-over-top');
+                    else target.classList.add('drag-over-bottom');
+                };
+                list.ondrop = e => {
+                    const target = e.target.closest('.draggable-card');
+                    if (!target || target.dataset.id === draggedId) return;
+                    pushHistory();
+                    const fromIdx = homeworks.findIndex(h => h.id === draggedId);
+                    const item = homeworks.splice(fromIdx, 1)[0];
+                    let toIdx = homeworks.findIndex(h => h.id === target.dataset.id);
+                    if (target.classList.contains('drag-over-bottom')) toIdx++;
+                    homeworks.splice(toIdx, 0, item);
+                    saveState();
+                    render();
+                };
+            };
+
+            // --- 初始化 ---
+            const init = () => {
+                const saved = localStorage.getItem(DATA_KEY);
+                homeworks = saved ? JSON.parse(saved) : [];
+                const hist = localStorage.getItem(HISTORY_KEY);
+                stateHistory = hist ? JSON.parse(hist) : [];
+                if (stateHistory.length === 0) pushHistory(false);
+                
+                studentIds.forEach(sid => {
+                    const opt = document.createElement('option');
+                    opt.value = sid; opt.textContent = `座號 ${sid}`;
+                    document.getElementById('student-selector').appendChild(opt);
+                });
+                
+                render();
+            };
+            init();
+        });
+    </script>
+</body>
+</html>
